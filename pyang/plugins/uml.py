@@ -154,6 +154,7 @@ class uml_emitter:
     ctx_filterfile = False
     ctx_usefilterfile = None
     groupings = dict()
+    imports = dict()
     uses = []
     uses_as_string = dict()
     leafrefs = []
@@ -244,6 +245,10 @@ class uml_emitter:
             self.emit_uml_header(title, fd)
 
         for module in modules:
+            imports = module.search('import')
+            for i in imports:
+                self.imports[i.search_one('prefix').arg] = i.arg
+
             if not self.ctx_no_module:
                 self.emit_module_header(module, fd)
             self.emit_module_class(module, fd)
@@ -507,14 +512,14 @@ class uml_emitter:
     def emit_module_header(self, module, fd):
         # print imported modules as packages
         if self.ctx_imports:
-            imports = module.search('import')
-            for i in imports:
+            # imports = module.search('import')
+            for key in self.imports:
                 #pre = self.make_plantuml_keyword((i.search_one('prefix')).arg)
                 #pkg = self.make_plantuml_keyword(i.arg)
                 #fd.write('package %s.%s \n' %(pre, pkg))
-                pre = i.search_one('prefix').arg
-                pkg = i.arg
-                fd.write('package \"%s:%s\" as %s_%s { \n' %(pre, pkg, self.make_plantuml_keyword(pre), self.make_plantuml_keyword(pkg)))
+                # pre = key
+                # pkg = i.arg
+                fd.write('package \"%s:%s\" as %s_%s { \n' %(key, self.imports[key], self.make_plantuml_keyword(key), self.make_plantuml_keyword(self.imports[key])))
 
                 # search for augments and place them in correct package
                 ## augments = module.search('augment')
@@ -1067,8 +1072,9 @@ class uml_emitter:
                     # Grouping in other module, use red...
                     # fd.write('class \"%s\" as %s << (G,Red) grouping>>\n' %(self.uses_as_string[u], self.make_plantuml_keyword(self.uses_as_string[u])))
                     # fd.write('%s --> %s : uses \n' %(p, self.make_plantuml_keyword(self.uses_as_string[u])))
-                    sys.stderr.write("Info: Skipping uses reference to %s, grouping not in input files \n" %u)
-                    pass
+                    pre = self.uses_as_string[u][0:self.uses_as_string[u].find(":")]
+                    sys.stderr.write("Info: Skipping uses reference to %s in module %s, module not in input files \n" %(self.uses_as_string[u], self.imports[pre]))
+                    # pass
 
         if self.ctx_leafrefs: # TODO correct paths for external leafrefs
             for l in self.leafrefs:
