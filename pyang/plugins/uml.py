@@ -154,7 +154,7 @@ class uml_emitter:
     ctx_filterfile = False
     ctx_usefilterfile = None
     groupings = dict()
-    imports = dict()
+    imported_prefixes = dict()
     uses = []
     uses_as_string = dict()
     leafrefs = []
@@ -245,9 +245,10 @@ class uml_emitter:
             self.emit_uml_header(title, fd)
 
         for module in modules:
+            # build a dictionary of imported modules and their prefixes
             imports = module.search('import')
             for i in imports:
-                self.imports[i.search_one('prefix').arg] = i.arg
+                self.imported_prefixes[i.search_one('prefix').arg] = i.arg
 
             if not self.ctx_no_module:
                 self.emit_module_header(module, fd)
@@ -512,14 +513,12 @@ class uml_emitter:
     def emit_module_header(self, module, fd):
         # print imported modules as packages
         if self.ctx_imports:
-            # imports = module.search('import')
-            for key in self.imports:
+            # render a package for each imported module
+            for key in self.imported_prefixes:
                 #pre = self.make_plantuml_keyword((i.search_one('prefix')).arg)
                 #pkg = self.make_plantuml_keyword(i.arg)
                 #fd.write('package %s.%s \n' %(pre, pkg))
-                # pre = key
-                # pkg = i.arg
-                fd.write('package \"%s:%s\" as %s_%s { \n' %(key, self.imports[key], self.make_plantuml_keyword(key), self.make_plantuml_keyword(self.imports[key])))
+                fd.write('package \"%s:%s\" as %s_%s { \n' % (key, self.imported_prefixes[key], self.make_plantuml_keyword(key), self.make_plantuml_keyword(self.imported_prefixes[key])))
 
                 # search for augments and place them in correct package
                 ## augments = module.search('augment')
@@ -1073,7 +1072,7 @@ class uml_emitter:
                     # fd.write('class \"%s\" as %s << (G,Red) grouping>>\n' %(self.uses_as_string[u], self.make_plantuml_keyword(self.uses_as_string[u])))
                     # fd.write('%s --> %s : uses \n' %(p, self.make_plantuml_keyword(self.uses_as_string[u])))
                     pre = self.uses_as_string[u][0:self.uses_as_string[u].find(":")]
-                    sys.stderr.write("Info: Skipping uses reference to %s in module %s, module not in input files \n" %(self.uses_as_string[u], self.imports[pre]))
+                    sys.stderr.write("Info: Skipping uses reference to %s in module %s, module not in input files \n" % (self.uses_as_string[u], self.imported_prefixes[pre]))
                     # pass
 
         if self.ctx_leafrefs: # TODO correct paths for external leafrefs
