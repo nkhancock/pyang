@@ -515,9 +515,6 @@ class uml_emitter:
         if self.ctx_imports:
             # render a package for each imported module
             for key in self.imported_prefixes:
-                #pre = self.make_plantuml_keyword((i.search_one('prefix')).arg)
-                #pkg = self.make_plantuml_keyword(i.arg)
-                #fd.write('package %s.%s \n' %(pre, pkg))
                 fd.write('package \"%s:%s\" as %s_%s { \n' % (key, self.imported_prefixes[key], self.make_plantuml_keyword(key), self.make_plantuml_keyword(self.imported_prefixes[key])))
 
                 # search for augments and place them in correct package
