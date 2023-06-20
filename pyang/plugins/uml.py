@@ -154,7 +154,6 @@ class uml_emitter:
     ctx_filterfile = False
     ctx_usefilterfile = None
     groupings = dict()
-    imported_prefixes = dict()
     uses = []
     uses_as_string = dict()
     leafrefs = []
@@ -167,6 +166,7 @@ class uml_emitter:
     _ctx = None
     post_strings = []
     module_prefixes = []
+    imported_prefixes = dict()
 
     def __init__(self, ctx):
         self._ctx = ctx
@@ -248,8 +248,9 @@ class uml_emitter:
             pre = module.search_one('prefix')
             if pre is not None:
                 self.thismod_prefix = pre.arg
-            # build a dictionary of imported modules and their prefixes
 
+            # Build a dictionary of imported modules and their prefixes across all modules
+            # This can be used to provide more relevant output information to the user.
             imports = module.search('import')
             for i in imports:
                 self.imported_prefixes[i.search_one('prefix').arg] = i.arg
