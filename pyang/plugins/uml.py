@@ -166,7 +166,7 @@ class uml_emitter:
     _ctx = None
     post_strings = []
     module_prefixes = []
-    imported_prefixes = dict()
+    imported_modules = dict()
 
     def __init__(self, ctx):
         self._ctx = ctx
@@ -253,7 +253,12 @@ class uml_emitter:
             # This can be used to provide more relevant output information to the user.
             imports = module.search('import')
             for i in imports:
-                self.imported_prefixes[i.search_one('prefix').arg] = i.arg
+                prefix = i.search_one('prefix').arg
+                if self.imported_modules.get(prefix) == None:
+                    self.imported_modules[prefix] = i.arg
+                # Probably a very rare occurence, but nevertheless check if the prefix is used to import different modules; if so issue an info that the UML may not render correctly
+                elif not self.imported_modules.get(prefix) == i.arg:
+                    sys.stderr.write("Info: Prefix %s is used by input module %s to import module %s but the same prefix is used by another input module to import module %s, as a result the UML may not render correctly \n" % (prefix, module.arg, self.imported_modules[prefix], i.arg))
 
             if not self.ctx_no_module:
                 self.emit_module_header(module, fd)
@@ -519,8 +524,8 @@ class uml_emitter:
         # print imported modules as packages
         if self.ctx_imports:
             # render a package for each imported module
-            for key in self.imported_prefixes:
-                fd.write('package \"%s:%s\" as %s_%s { \n' % (key, self.imported_prefixes[key], self.make_plantuml_keyword(key), self.make_plantuml_keyword(self.imported_prefixes[key])))
+            for key in self.imported_modules:
+                fd.write('package \"%s:%s\" as %s_%s { \n' % (key, self.imported_modules[key], self.make_plantuml_keyword(key), self.make_plantuml_keyword(self.imported_modules[key])))
 
                 # search for augments and place them in correct package
                 ## augments = module.search('augment')
@@ -1067,7 +1072,7 @@ class uml_emitter:
                     # fd.write('class \"%s\" as %s << (G,Red) grouping>>\n' %(self.uses_as_string[u], self.make_plantuml_keyword(self.uses_as_string[u])))
                     # fd.write('%s --> %s : uses \n' %(p, self.make_plantuml_keyword(self.uses_as_string[u])))
                     pre = self.uses_as_string[u][0:self.uses_as_string[u].find(":")]
-                    sys.stderr.write("Info: Skipping uses reference to %s in module %s, module not in input files \n" % (self.uses_as_string[u], self.imported_prefixes[pre]))
+                    sys.stderr.write("Info: Skipping uses reference to %s in module %s, module not in input files \n" % (self.uses_as_string[u], self.imported_modules[pre]))
                     # pass
 
         if self.ctx_leafrefs: # TODO correct paths for external leafrefs
