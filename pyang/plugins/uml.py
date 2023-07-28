@@ -303,7 +303,7 @@ class uml_emitter:
             if self.ctx_inline_augments and node is not None:
                 # Emit augment target, in case that module was given as input this results in duplicate, but plantUML do not care
                 # The False flag stops emit_child from continuing iterating further down the tree
-                self.emit_child_stmt(node.parent, node, fd, False)
+                # self.emit_child_stmt(node.parent, node, fd, False)
                 for s in stmt.substmts:
                     s.parent = node
                     self.emit_child_stmt(node, s, fd)
