@@ -301,9 +301,21 @@ class uml_emitter:
                 pass
 
             if self.ctx_inline_augments and node is not None:
-                # Emit augment target, in case that module was given as input this results in duplicate, but plantUML do not care
-                # The False flag stops emit_child from continuing iterating further down the tree
-                # self.emit_child_stmt(node.parent, node, fd, False)
+                # Emit augment target only if target not in input modules as this results in duplicates, wich cause issues with PlantUML release >= 1.2023.2
+                # due to stricter scoping rules
+                target_node = stmt.arg
+                target_node = target_node[target_node.rfind("/")+1:]
+
+                target_prefix, _ = util.split_identifier(target_node)
+                if target_prefix is None:
+                    target_prefix = self.thismod_prefix
+
+                # if target data node (last node in path) is not located in the list of input modules, a relation to the target class cannot be created
+                # so create a placeholder class
+                if target_prefix not in self.module_prefixes:
+                    # The False flag stops emit_child from continuing iterating further down the tree
+                    self.emit_child_stmt(node.parent, node, fd, False)
+
                 for s in stmt.substmts:
                     s.parent = node
                     self.emit_child_stmt(node, s, fd)
