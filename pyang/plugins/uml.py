@@ -379,26 +379,27 @@ class uml_emitter:
             if self.ctx_truncate_augments:
                 a = '...' + a[a.rfind('/'):]
 
-            # if augmented node is not in input modules, then we need to proceed for this stmt as if self.ctx_inline_augments was not set
-            augment_inline = self.ctx_inline_augments
+            # inline augments are only possible if augmented node is not in input modules,
+            # otherwise proceed for this stmt as if self.ctx_inline_augments was not set
+            inline_augments = self.ctx_inline_augments
 
-            if augment_inline:
-                augment_node = stmt.arg
-                augment_node = augment_node[augment_node.rfind("/") + 1:]
+            if inline_augments:
+                node_to_augment = stmt.arg
+                node_to_augment = node_to_augment[node_to_augment.rfind("/") + 1:]
 
-                augment_node_prefix, _ = util.split_identifier(augment_node)
-                if augment_node_prefix is None:
-                    augment_node_prefix = self.thismod_prefix
+                node_to_augment_prefix, _ = util.split_identifier(node_to_augment)
+                if node_to_augment_prefix is None:
+                    node_to_augment_prefix = self.thismod_prefix
 
-                augment_inline = augment_node_prefix in self.module_prefixes
+                inline_augments = node_to_augment_prefix in self.module_prefixes
 
-            if not augment_inline:
+            if not inline_augments:
                 fd.write('class \"%s\" as %s << (A,CadetBlue) augment>>\n' %(a, self.full_path(stmt)))
             # ugly, the augmented elemented is suffixed with _ in emit_header
             # fd.write('_%s <-- %s : augment \n' %(self.full_path(stmt), self.full_path(stmt)))
 
             # also, since we are the root, add the module as parent
-            if self.full_path(stmt) not in self.augmentpaths and not augment_inline:
+            if self.full_path(stmt) not in self.augmentpaths and not inline_augments:
                 fd.write('%s *--  %s \n' %(self.full_path(mod), self.full_path(stmt)))
                 self.augmentpaths.append(self.full_path(stmt))
 
@@ -408,14 +409,14 @@ class uml_emitter:
             prefix = self.thismod_prefix if prefix is None else prefix[1:]
 
             node = statements.find_target_node(self._ctx, stmt, True)
-            if node is not None and prefix in self.module_prefixes and not augment_inline:
+            if node is not None and prefix in self.module_prefixes and not inline_augments:
                 # sys.stderr.write("Found augment target : %s , %s \n" %(stmt.arg, self.full_path(node)))
                 self.augments.append(self.full_path(stmt) + '-->' + self.full_path(node) + ' : augments' + '\n')
             else:
                 # sys.stderr.write("Not Found augment target : %s \n" %(stmt.arg))
                 pass
 
-            if augment_inline and node is not None:
+            if inline_augments and node is not None:
                 # Emit augment target, in case that module was given as input this results in duplicate, but plantUML do not care
                 # The False flag stops emit_child from continuing iterating further down the tree
                 # self.emit_child_stmt(node.parent, node, fd, False)
