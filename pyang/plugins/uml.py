@@ -374,12 +374,7 @@ class uml_emitter:
                 self.emit_child_stmt(stmt, s, fd)
 
         elif stmt.keyword == 'augment' and not self.ctx_filterfile:
-            # HERE
-            a = stmt.arg
-            if self.ctx_truncate_augments:
-                a = '...' + a[a.rfind('/'):]
-
-            # inline augments are only possible if augmented node is not in input modules,
+            # inline augments are only possible if the augmented node is in one of the input modules,
             # otherwise proceed for this stmt as if self.ctx_inline_augments was not set
             inline_augments = self.ctx_inline_augments
 
@@ -393,23 +388,21 @@ class uml_emitter:
 
                 inline_augments = node_to_augment_prefix in self.module_prefixes
 
+            # if augments are not rendered inline, render a class for the augment statement
             if not inline_augments:
+                a = stmt.arg
+                if self.ctx_truncate_augments:
+                    a = '...' + a[a.rfind('/'):]
+
                 fd.write('class \"%s\" as %s << (A,CadetBlue) augment>>\n' %(a, self.full_path(stmt)))
-            # ugly, the augmented elemented is suffixed with _ in emit_header
-            # fd.write('_%s <-- %s : augment \n' %(self.full_path(stmt), self.full_path(stmt)))
 
             # also, since we are the root, add the module as parent
             if self.full_path(stmt) not in self.augmentpaths and not inline_augments:
                 fd.write('%s *--  %s \n' %(self.full_path(mod), self.full_path(stmt)))
                 self.augmentpaths.append(self.full_path(stmt))
 
-            # MEF
-            prefix, _ = util.split_identifier(stmt.arg)
-            # FIXME: previous code skipped first char, possibly in error
-            prefix = self.thismod_prefix if prefix is None else prefix[1:]
-
             node = statements.find_target_node(self._ctx, stmt, True)
-            if node is not None and prefix in self.module_prefixes and not inline_augments:
+            if node is not None and node_to_augment_prefix in self.module_prefixes and not inline_augments:
                 # sys.stderr.write("Found augment target : %s , %s \n" %(stmt.arg, self.full_path(node)))
                 self.augments.append(self.full_path(stmt) + '-->' + self.full_path(node) + ' : augments' + '\n')
             else:
