@@ -380,14 +380,14 @@ class uml_emitter:
             # otherwise proceed for this stmt as if self.ctx_inline_augments was not set
             inline_augments = self.ctx_inline_augments
 
+            node_to_augment = stmt.arg
+            node_to_augment = node_to_augment[node_to_augment.rfind("/") + 1:]
+
+            node_to_augment_prefix, _ = util.split_identifier(node_to_augment)
+            if node_to_augment_prefix is None:
+                node_to_augment_prefix = self.thismod_prefix
+
             if inline_augments:
-                node_to_augment = stmt.arg
-                node_to_augment = node_to_augment[node_to_augment.rfind("/") + 1:]
-
-                node_to_augment_prefix, _ = util.split_identifier(node_to_augment)
-                if node_to_augment_prefix is None:
-                    node_to_augment_prefix = self.thismod_prefix
-
                 inline_augments = node_to_augment_prefix in self.input_modules.keys()
 
             # if augments are not rendered inline, render a class for the augment statement
@@ -640,6 +640,7 @@ class uml_emitter:
                 #fd.write('package %s.%s \n' %(pre, pkg))
                 pre = i.search_one('prefix').arg
                 pkg = i.arg
+
                 if self.ctx_prefix :
                     fd.write('package \"%s:%s\" as %s_%s { \n' % (pre, pkg, self.make_plantuml_keyword(pre), self.make_plantuml_keyword(pkg)))
                 else:
