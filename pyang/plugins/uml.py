@@ -192,7 +192,7 @@ class uml_emitter:
     _ctx = None
     post_strings = []
     end_strings = []
-    module_prefixes = []
+    input_modules = dict()
     leafref_classes = []
 
     choice_relation_symbol = ".."
@@ -337,10 +337,12 @@ class uml_emitter:
                 title += m.arg + '_'
             title = title[:len(title)-1]
             title = title[:32]
+
         for m in modules:
             prefix = m.search_one('prefix')
             if prefix is not None:
-                self.module_prefixes.append(prefix.arg)
+                if self.input_modules.get(prefix.arg) is None:
+                    self.input_modules[prefix.arg] = m.arg
 
         if not self.ctx_filterfile:
             self.emit_uml_header(title, fd)
@@ -386,7 +388,7 @@ class uml_emitter:
                 if node_to_augment_prefix is None:
                     node_to_augment_prefix = self.thismod_prefix
 
-                inline_augments = node_to_augment_prefix in self.module_prefixes
+                inline_augments = node_to_augment_prefix in self.input_modules.keys()
 
             # if augments are not rendered inline, render a class for the augment statement
             if not inline_augments:
@@ -402,7 +404,7 @@ class uml_emitter:
                 self.augmentpaths.append(self.full_path(stmt))
 
             node = statements.find_target_node(self._ctx, stmt, True)
-            if node is not None and node_to_augment_prefix in self.module_prefixes and not inline_augments:
+            if node is not None and node_to_augment_prefix in self.input_modules.keys() and not inline_augments:
                 # sys.stderr.write("Found augment target : %s , %s \n" %(stmt.arg, self.full_path(node)))
                 self.augments.append(self.full_path(stmt) + '-->' + self.full_path(node) + ' : augments' + '\n')
             else:
@@ -998,7 +1000,7 @@ class uml_emitter:
                         target_prefix = self.thismod_prefix
 
                     # if target node (last node in path) is located in the list of input modules, a relation to the target class can be created
-                    if target_prefix in self.module_prefixes:
+                    if target_prefix in self.input_modules.keys():
                         # if the relation is internal to this module append to leafrefs else append to end of diagram outside the scope of any input module
                         target_keyword = self.full_path(target_node.parent)
                         if target_prefix == self.thismod_prefix:
@@ -1050,7 +1052,7 @@ class uml_emitter:
                     # in both the above cases the keyword will be then same
                     # if baseid is in another input module, then an identity class will have been defined there (with the same keyword), in which case the relation must be defined outside of the module packages
                     prefix, _ = util.split_identifier(baseid)
-                    if prefix == self.thismod_prefix or prefix not in self.module_prefixes:
+                    if prefix == self.thismod_prefix or prefix not in self.input_modules.keys():
                         self.post_strings.append(keyword + '-->' + self.make_plantuml_keyword(baseid) + '_identity : ' + node.arg + '\n')
                     else:
                         self.end_strings.append(keyword + '-->' + self.make_plantuml_keyword(baseid) + '_identity : ' + node.arg + '\n')
@@ -1282,7 +1284,7 @@ class uml_emitter:
             # If a base is not defined in the module, define it, if it is not in another input module
             if not base in self.identities:
                 prefix, _ = util.split_identifier(base)
-                if prefix not in self.module_prefixes:
+                if prefix not in self.input_modules.keys():
                     keyword = self.make_plantuml_keyword(base) + '_identity'
                     fd.write('class \"%s\" as %s << (I,Silver) identity>> \n' %(base, keyword))
 
