@@ -641,10 +641,7 @@ class uml_emitter:
                 pre = i.search_one('prefix').arg
                 pkg = i.arg
 
-                if self.ctx_prefix :
-                    fd.write('package \"%s:%s\" as %s_%s { \n' % (pre, pkg, self.make_plantuml_keyword(pre), self.make_plantuml_keyword(pkg)))
-                else:
-                    fd.write('package \"%s\" as %s_%s { \n' % (pkg, self.make_plantuml_keyword(pre),self.make_plantuml_keyword(pkg)))
+                self.open_package(pre, pkg, fd)
 
                 # search for augments and place them in correct package
                 ## augments = module.search('augment')
@@ -656,7 +653,7 @@ class uml_emitter:
                 ##     a_pkg = ''
                 ##     if pre == a_pre: # augments element in this module, ugly trick use _suffix here
                 ##             fd.write('class \"%s\" as %s \n' %(a.arg, self.make_plantuml_keyword(a.arg)))
-                fd.write('} \n')
+                self.close_package(fd)
 
         bt = module.search_one('belongs-to')
         if bt is not None:
@@ -673,11 +670,8 @@ class uml_emitter:
         # define a empty package for the module
         # this ensures that PlantUML knows that its keyword represents a package and not a class when referenced before the main definition of the package within the Plant UML code,
         # e.g., by the note definition that follows below
-        if self.ctx_prefix:
-            fd.write('package \"%s:%s\" as %s_%s { \n' %(self.thismod_prefix, pkg, self.make_plantuml_keyword(self.thismod_prefix), self.make_plantuml_keyword(pkg)))
-        else:
-            fd.write('package \"%s\" as %s_%s { \n' % (pkg, self.make_plantuml_keyword(self.thismod_prefix), self.make_plantuml_keyword(pkg)))
-        fd.write('} \n')
+        self.open_package(self.thismod_prefix, pkg, fd)
+        self.close_package(fd)
 
         # print package for this module and a class to represent module (notifs and rpcs)
         # print module info as note
@@ -713,11 +707,8 @@ class uml_emitter:
                 fd.write('<b>Revision : </b> %s \\n' % module.search_one('revision').arg)
             fd.write('\n')
 
-        # This package
-        if self.ctx_prefix:
-            fd.write('package \"%s:%s\" as %s_%s { \n' %(self.thismod_prefix, pkg, self.make_plantuml_keyword(self.thismod_prefix), self.make_plantuml_keyword(pkg)))
-        else:
-            fd.write('package \"%s\" as %s_%s { \n' %(pkg, self.make_plantuml_keyword(self.thismod_prefix), self.make_plantuml_keyword(pkg)))
+        # open this package to begin rendering statements
+        self.open_package(self.thismod_prefix, pkg, fd)
 
         includes = module.search('include')
         for inc in includes:
@@ -1304,3 +1295,14 @@ class uml_emitter:
                 for i in imports:
                     mod = self.make_plantuml_keyword(i.search_one('prefix').arg) + '_' + self.make_plantuml_keyword(i.arg)
                     fd.write('%s +-- %s_%s\n' %(mod,self.make_plantuml_keyword(self.thismod_prefix), self.make_plantuml_keyword(module.arg)))
+
+    def open_package(self, prefix, pkg, fd):
+        if prefix is not None and self.ctx_prefix:
+            fd.write('\npackage \"%s:%s\" as %s_%s { \n' % (prefix, pkg, self.make_plantuml_keyword(prefix), self.make_plantuml_keyword(pkg)))
+        else:
+            fd.write('\npackage \"%s\" as %s_%s { \n' % (pkg, self.make_plantuml_keyword(prefix),self.make_plantuml_keyword(pkg)))
+
+
+    def close_package(self, fd):
+        fd.write('} \n')
+
