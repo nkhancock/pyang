@@ -1297,7 +1297,7 @@ class uml_emitter:
                     fd.write('%s +-- %s_%s\n' %(mod,self.make_plantuml_keyword(self.thismod_prefix), self.make_plantuml_keyword(module.arg)))
 
     def open_package(self, prefix, pkg, fd):
-        if prefix is not None and self.ctx_prefix:
+        if self.ctx_prefix:
             fd.write('\npackage \"%s:%s\" as %s_%s { \n' % (prefix, pkg, self.make_plantuml_keyword(prefix), self.make_plantuml_keyword(pkg)))
         else:
             fd.write('\npackage \"%s\" as %s_%s { \n' % (pkg, self.make_plantuml_keyword(prefix),self.make_plantuml_keyword(pkg)))
