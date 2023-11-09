@@ -376,9 +376,6 @@ class uml_emitter:
                 self.emit_child_stmt(stmt, s, fd)
 
         elif stmt.keyword == 'augment' and not self.ctx_filterfile:
-            # inline augments are only possible if the augmented node is in one of the input modules,
-            # otherwise proceed for this stmt as if self.ctx_inline_augments was not set
-            inline_augments = self.ctx_inline_augments
 
             node_to_augment = stmt.arg
             node_to_augment = node_to_augment[node_to_augment.rfind("/") + 1:]
@@ -387,8 +384,9 @@ class uml_emitter:
             if node_to_augment_prefix is None:
                 node_to_augment_prefix = self.thismod_prefix
 
-            if inline_augments:
-                inline_augments = node_to_augment_prefix in self.input_modules.keys()
+            # inline augments are only possible if the augmented node is in one of the input modules,
+            # otherwise proceed for this stmt as if self.ctx_inline_augments was not set
+            inline_augments = self.ctx_inline_augments and node_to_augment_prefix in self.input_modules.keys()
 
             # if augments are not rendered inline, render a class for the augment statement
             if not inline_augments:
@@ -417,8 +415,19 @@ class uml_emitter:
                 # self.emit_child_stmt(node.parent, node, fd, False)
                 for s in stmt.substmts:
                     s.parent = node
-                    self.emit_child_stmt(node, s, fd)
 
+                    if node_to_augment_prefix != self.thismod_prefix:
+                        if s.keyword == 'leaf' or s.keyword == 'leaf-list':
+                            self.close_package(fd)
+                            self.open_package(node_to_augment_prefix, self.input_modules.get(node_to_augment_prefix), fd)
+                            fd.write('class \"%s\" as %s << (L, #FF7700) list>> \n' % (self.full_display_path(node),self.full_path(node)))
+
+                            self.emit_child_stmt(node, s, fd)
+                            self.close_package(fd)
+                            self.open_package(self.thismod_prefix, self.input_modules.get(self.thismod_prefix), fd)
+
+                    else:
+                        self.emit_child_stmt(node, s, fd)
             else:
                 for s in stmt.substmts:
                     self.emit_child_stmt(stmt, s, fd)
@@ -635,24 +644,10 @@ class uml_emitter:
         if self.ctx_imports:
             imports = module.search('import')
             for i in imports:
-                #pre = self.make_plantuml_keyword((i.search_one('prefix')).arg)
-                #pkg = self.make_plantuml_keyword(i.arg)
-                #fd.write('package %s.%s \n' %(pre, pkg))
                 pre = i.search_one('prefix').arg
                 pkg = i.arg
 
                 self.open_package(pre, pkg, fd)
-
-                # search for augments and place them in correct package
-                ## augments = module.search('augment')
-                ## if augments:
-                ##     # remove duplicates
-                ##     augments = list(set(augments))
-                ## for a in augments:
-                ##     a_pre = self.first_component(a.arg)
-                ##     a_pkg = ''
-                ##     if pre == a_pre: # augments element in this module, ugly trick use _suffix here
-                ##             fd.write('class \"%s\" as %s \n' %(a.arg, self.make_plantuml_keyword(a.arg)))
                 self.close_package(fd)
 
         bt = module.search_one('belongs-to')
