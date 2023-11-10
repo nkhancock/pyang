@@ -377,16 +377,16 @@ class uml_emitter:
 
         elif stmt.keyword == 'augment' and not self.ctx_filterfile:
 
-            node_to_augment = stmt.arg
-            node_to_augment = node_to_augment[node_to_augment.rfind("/") + 1:]
+            augmented_node = stmt.arg
+            augmented_node = augmented_node[augmented_node.rfind("/") + 1:]
 
-            node_to_augment_prefix, _ = util.split_identifier(node_to_augment)
-            if node_to_augment_prefix is None:
-                node_to_augment_prefix = self.thismod_prefix
+            augmented_node_prefix, _ = util.split_identifier(augmented_node)
+            if augmented_node_prefix is None:
+                augmented_node_prefix = self.thismod_prefix
 
             # inline augments are only possible if the augmented node is in one of the input modules,
             # otherwise proceed for this stmt as if self.ctx_inline_augments was not set
-            inline_augments = self.ctx_inline_augments and node_to_augment_prefix in self.input_modules.keys()
+            inline_augments = self.ctx_inline_augments and augmented_node_prefix in self.input_modules.keys()
 
             # if augments are not rendered inline, render a class for the augment statement
             if not inline_augments:
@@ -402,7 +402,7 @@ class uml_emitter:
                 self.augmentpaths.append(self.full_path(stmt))
 
             node = statements.find_target_node(self._ctx, stmt, True)
-            if node is not None and node_to_augment_prefix in self.input_modules.keys() and not inline_augments:
+            if node is not None and augmented_node_prefix in self.input_modules.keys() and not inline_augments:
                 # sys.stderr.write("Found augment target : %s , %s \n" %(stmt.arg, self.full_path(node)))
                 self.augments.append(self.full_path(stmt) + '-->' + self.full_path(node) + ' : augments' + '\n')
             else:
@@ -416,15 +416,25 @@ class uml_emitter:
                 for s in stmt.substmts:
                     s.parent = node
 
-                    if node_to_augment_prefix != self.thismod_prefix:
+                    # if augmented node is in another input module, it may not yet have been rendered and scoping errors may result,
+                    # so render it regardless to be sure - plantUML does not care about multiple identical definitions within the same scope, i.e., package
+                    if augmented_node_prefix != self.thismod_prefix:
                         if s.keyword == 'leaf' or s.keyword == 'leaf-list':
                             self.close_package(fd)
-                            self.open_package(node_to_augment_prefix, self.input_modules.get(node_to_augment_prefix), fd)
-                            fd.write('class \"%s\" as %s << (L, #FF7700) list>> \n' % (self.full_display_path(node),self.full_path(node)))
-
+                            self.open_package(augmented_node_prefix, self.input_modules.get(augmented_node_prefix), fd)
+                            # fd.write('class \"%s\" as %s << (L, #FF7700) list>> \n' % (self.full_display_path(node),self.full_path(node)))
+                            self.emit_child_stmt(node.parent, node, fd, False)
                             self.emit_child_stmt(node, s, fd)
                             self.close_package(fd)
                             self.open_package(self.thismod_prefix, self.input_modules.get(self.thismod_prefix), fd)
+
+                        else:
+                            self.close_package(fd)
+                            self.open_package(augmented_node_prefix, self.input_modules.get(augmented_node_prefix), fd)
+                            fd.write('class \"%s\" as %s << (L, #FF7700) list>> \n' % (self.full_display_path(node),self.full_path(node)))
+                            self.close_package(fd)
+                            self.open_package(self.thismod_prefix, self.input_modules.get(self.thismod_prefix), fd)
+                            self.emit_child_stmt(node, s, fd)
 
                     else:
                         self.emit_child_stmt(node, s, fd)
