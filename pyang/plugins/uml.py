@@ -368,7 +368,7 @@ class uml_emitter:
 
 
     def emit_stmt(self, mod, stmt, fd):
-        # find  good UML roots
+        # find top-level statements that are good UML roots
 
         if stmt.keyword == 'container':
             self.emit_container(mod, stmt, fd)
@@ -376,17 +376,16 @@ class uml_emitter:
                 self.emit_child_stmt(stmt, s, fd)
 
         elif stmt.keyword == 'augment' and not self.ctx_filterfile:
+            target_node = statements.find_target_node(self._ctx, stmt, True)
 
-            augmented_node = stmt.arg
-            augmented_node = augmented_node[augmented_node.rfind("/") + 1:]
+            target_node_id = stmt.arg[stmt.arg.rfind("/") + 1:]
+            target_module_prefix, _ = util.split_identifier(target_node_id)
+            if target_module_prefix is None:
+                target_module_prefix = self.thismod_prefix
 
-            augmented_node_prefix, _ = util.split_identifier(augmented_node)
-            if augmented_node_prefix is None:
-                augmented_node_prefix = self.thismod_prefix
-
-            # inline augments are only possible if the augmented node is in one of the input modules,
+            # inline augments are only possible if the target node is in one of the input modules,
             # otherwise proceed for this stmt as if self.ctx_inline_augments was not set
-            inline_augments = self.ctx_inline_augments and augmented_node_prefix in self.input_modules.keys()
+            inline_augments = self.ctx_inline_augments and target_module_prefix in self.input_modules.keys()
 
             # if augments are not rendered inline, render a class for the augment statement
             if not inline_augments:
@@ -396,48 +395,61 @@ class uml_emitter:
 
                 fd.write('class \"%s\" as %s << (A,CadetBlue) augment>>\n' %(a, self.full_path(stmt)))
 
-            # also, since we are the root, add the module as parent
-            if self.full_path(stmt) not in self.augmentpaths and not inline_augments:
-                fd.write('%s *--  %s \n' %(self.full_path(mod), self.full_path(stmt)))
-                self.augmentpaths.append(self.full_path(stmt))
+                # also, since we are the root, add the module as parent
+                if self.full_path(stmt) not in self.augmentpaths:
+                    fd.write('%s *--  %s \n' %(self.full_path(mod), self.full_path(stmt)))
+                    self.augmentpaths.append(self.full_path(stmt))
 
-            node = statements.find_target_node(self._ctx, stmt, True)
-            if node is not None and augmented_node_prefix in self.input_modules.keys() and not inline_augments:
-                # sys.stderr.write("Found augment target : %s , %s \n" %(stmt.arg, self.full_path(node)))
-                self.augments.append(self.full_path(stmt) + '-->' + self.full_path(node) + ' : augments' + '\n')
-            else:
-                # sys.stderr.write("Not Found augment target : %s \n" %(stmt.arg))
-                pass
+                if target_node is not None and target_module_prefix in self.input_modules.keys():
+                    # sys.stderr.write("Found augment target : %s , %s \n" %(stmt.arg, self.full_path(target_node)))
+                    self.augments.append(self.full_path(stmt) + '-->' + self.full_path(target_node) + ' : augments' + '\n')
+                else:
+                    # sys.stderr.write("Not Found augment target : %s \n" %(stmt.arg))
+                    pass
 
-            if inline_augments and node is not None:
+            if inline_augments and target_node is not None:
+
+                # if a substatement is a shorthand case, insert fake case statement
+                for s in stmt.substmts:
+
+                    if target_node.keyword == 'choice' and s.keyword in ('container', 'leaf', 'leaf-list', 'list'):
+                        # create fake parent statement.keyword = 'case' statement.arg = node.arg
+                        newparent = statements.Statement(target_node, target_node, None, 'case', s.arg)
+                        newparent.substmts = stmt.substmts
+                        fd.write('class \"%s\" as %s <<case>> \n' % (s.arg, self.full_path(newparent)))
+
+                        # fd.write('%s %s %s : choice %s\n' % (self.full_path(target_node), self.case_relation_symbol, self.full_path(newparent), s.parent.arg))
+
+
                 # Emit augment target, in case that module was given as input this results in duplicate, but plantUML do not care
                 # The False flag stops emit_child from continuing iterating further down the tree
-                # self.emit_child_stmt(node.parent, node, fd, False)
+                # self.emit_child_stmt(target_node.parent, target_node, fd, False)
                 for s in stmt.substmts:
-                    s.parent = node
 
-                    # if augmented node is in another input module, it may not yet have been rendered and scoping errors may result,
+
+
+                    # if target_node is in another input module, it may not yet have been rendered in the PlantUML code and scoping errors may result,
                     # so render it regardless to be sure - plantUML does not care about multiple identical definitions within the same scope, i.e., package
-                    if augmented_node_prefix != self.thismod_prefix:
+                    if target_module_prefix != self.thismod_prefix:
                         if s.keyword == 'leaf' or s.keyword == 'leaf-list':
+
                             self.close_package(fd)
-                            self.open_package(augmented_node_prefix, self.input_modules.get(augmented_node_prefix), fd)
-                            # fd.write('class \"%s\" as %s << (L, #FF7700) list>> \n' % (self.full_display_path(node),self.full_path(node)))
-                            self.emit_child_stmt(node.parent, node, fd, False)
-                            self.emit_child_stmt(node, s, fd)
+                            self.open_package(target_module_prefix, self.input_modules.get(target_module_prefix), fd)
+                            self.emit_child_stmt(target_node.parent, target_node, fd, False, True)
+                            self.emit_child_stmt(target_node, s, fd)
                             self.close_package(fd)
                             self.open_package(self.thismod_prefix, self.input_modules.get(self.thismod_prefix), fd)
 
                         else:
                             self.close_package(fd)
-                            self.open_package(augmented_node_prefix, self.input_modules.get(augmented_node_prefix), fd)
-                            fd.write('class \"%s\" as %s << (L, #FF7700) list>> \n' % (self.full_display_path(node),self.full_path(node)))
+                            self.open_package(target_module_prefix, self.input_modules.get(target_module_prefix), fd)
+                            self.emit_child_stmt(target_node.parent, target_node, fd, False, True)
                             self.close_package(fd)
                             self.open_package(self.thismod_prefix, self.input_modules.get(self.thismod_prefix), fd)
-                            self.emit_child_stmt(node, s, fd)
+                            self.emit_child_stmt(target_node, s, fd)
 
                     else:
-                        self.emit_child_stmt(node, s, fd)
+                        self.emit_child_stmt(target_node, s, fd)
             else:
                 for s in stmt.substmts:
                     self.emit_child_stmt(stmt, s, fd)
@@ -492,7 +504,7 @@ class uml_emitter:
               # emit_stmt(mod, s, fd)
 
 
-    def emit_child_stmt(self, parent, node, fd, cont = True):
+    def emit_child_stmt(self, parent, node, fd, cont = True, no_parent_rel = False):
         keysign = ''
         keyprefix = ''
         uniquesign = ''
@@ -508,7 +520,7 @@ class uml_emitter:
 
 
         if node.keyword == 'container':
-            self.emit_container(parent, node, fd)
+            self.emit_container(parent, node, fd, False)
             if cont:
                 for children in node.substmts:
                     self.emit_child_stmt(node, children, fd)
@@ -516,7 +528,7 @@ class uml_emitter:
             self.emit_grouping(parent, node, fd)
 
         elif node.keyword == 'list':
-            self.emit_list(parent, node, fd)
+            self.emit_list(parent, node, fd, no_parent_rel)
             if cont:
                 for children in node.substmts:
                     self.emit_child_stmt(node, children, fd)
@@ -524,7 +536,8 @@ class uml_emitter:
         elif node.keyword == 'choice':
             if not self.ctx_filterfile:
                 fd.write('class \"%s\" as %s <<choice>> \n' % (self.full_display_path(node), self.full_path(node)))
-                fd.write('%s %s %s : choice \n' % (self.full_path(parent), self.choice_relation_symbol, self.full_path(node)))
+                if not no_parent_rel:
+                    fd.write('%s %s %s : choice \n' % (self.full_path(parent), self.choice_relation_symbol, self.full_path(node)))
             if cont:
                 for children in node.substmts:
                     # try pointing to parent
@@ -534,7 +547,8 @@ class uml_emitter:
             # sys.stderr.write('in case \n')
             if not self.ctx_filterfile:
                 fd.write('class \"%s\" as %s <<case>>\n' %(self.full_display_path(node), self.full_path(node)))
-                fd.write('%s %s %s  : choice %s\n' % (self.full_path(parent), self.case_relation_symbol, self.full_path(node), node.parent.arg))
+                if not no_parent_rel:
+                    fd.write('%s %s %s  : choice %s\n' % (self.full_path(parent), self.case_relation_symbol, self.full_path(node), node.parent.arg))
 
             if cont:
                 for children in node.substmts:
@@ -593,7 +607,7 @@ class uml_emitter:
                 fd.write('%s : %s %s %s\n' %(self.full_path(parent), node.arg, '[]: ' + self.typestring(node), self.attribs(node)) )
                 self.emit_must_leaf(parent, node, fd)
             elif node.keyword == 'notification':
-                self.emit_notif(parent, node, fd)
+                self.emit_notif(parent, node, fd, no_parent_rel)
                 if cont:
                     for children in node.substmts:
                         self.emit_child_stmt(node, children, fd)
@@ -745,7 +759,7 @@ class uml_emitter:
         fd.write("%s ()-- %s \n" %(text,self.full_path(node)))
 
 
-    def emit_container(self, parent, node, fd):
+    def emit_container(self, parent, node, fd, no_parent_rel = False):
         presence = node.search_one("presence")
         if presence is not None:
             cardinality = "0..1"
@@ -755,28 +769,30 @@ class uml_emitter:
         if not self.ctx_filterfile:
         # and (not self.ctx_usefilterfile or self.full_path(node) in self.filterpaths):
             fd.write('class \"%s\" as  %s <<container>> \n' %(self.full_display_path(node), self.full_path(node)))
-            fd.write('%s *-- \"%s\" %s \n' %(self.full_path(parent), cardinality, self.full_path(node)))
+            if not no_parent_rel:
+                fd.write('%s *-- \"%s\" %s \n' %(self.full_path(parent), cardinality, self.full_path(node)))
         else:
             fd.write(self.full_path(node) + '\n')
 
 
 
-    def emit_list(self, parent, node, fd):
+    def emit_list(self, parent, node, fd, no_parent_rel = False):
         if not self.ctx_filterfile:
             fd.write('class \"%s\" as %s << (L, #FF7700) list>> \n' %(self.full_display_path(node), self.full_path(node)))
-            minelem = '0'
-            maxelem = self.ctx_unbounded_maxelem
-            oby = ''
-            mi = node.search_one('min-elements')
-            if mi is not None:
-                minelem = mi.arg
-            ma = node.search_one('max-elements')
-            if ma is not None:
-                maxelem = ma.arg
-            orderedby = node.search_one('ordered-by')
-            if orderedby is not None:
-                oby = ': ordered-by : ' + orderedby.arg
-            fd.write('%s *-- \"%s..%s\" %s %s\n' %(self.full_path(parent), minelem, maxelem, self.full_path(node), oby))
+            if not no_parent_rel:
+                minelem = '0'
+                maxelem = self.ctx_unbounded_maxelem
+                oby = ''
+                mi = node.search_one('min-elements')
+                if mi is not None:
+                    minelem = mi.arg
+                ma = node.search_one('max-elements')
+                if ma is not None:
+                    maxelem = ma.arg
+                orderedby = node.search_one('ordered-by')
+                if orderedby is not None:
+                    oby = ': ordered-by : ' + orderedby.arg
+                fd.write('%s *-- \"%s..%s\" %s %s\n' %(self.full_path(parent), minelem, maxelem, self.full_path(node), oby))
         else:
             fd.write(self.full_path(node) + '\n')
 
@@ -868,11 +884,12 @@ class uml_emitter:
                 fd.write('%s : %s\n' %(keyword, self.typestring(t)))
 
 
-    def emit_notif(self, parent, node, fd):
+    def emit_notif(self, parent, node, fd, no_parent_rel = False):
         # ALTERNATIVE 1
         # notif as class stereotype, ugly, but easier to layout params
         fd.write('class \"%s\" as %s << (N,#00D1B2) notification>> \n' % (self.full_display_path(node), self.full_path(node)))
-        fd.write('%s -- %s : notification \n' % (self.make_plantuml_keyword(self.full_path(parent)), self.full_path(node)))
+        if not no_parent_rel:
+            fd.write('%s -- %s : notification \n' % (self.make_plantuml_keyword(self.full_path(parent)), self.full_path(node)))
         # for params in node.substmts:
         #    self.emit_child_stmt(node, params, fd)
 
