@@ -192,8 +192,13 @@ class uml_emitter:
     _ctx = None
     post_strings = []
     end_strings = []
-    module_prefixes = []
+    input_modules = dict()
     leafref_classes = []
+
+    preamble = []
+    postamble = []
+    package_puml = dict()
+    inter_package_relations = []
 
     choice_relation_symbol = ".."
     case_relation_symbol = ".."
@@ -333,27 +338,33 @@ class uml_emitter:
         if self.ctx_title_text is not None:
             title = self.ctx_title_text
         else:
-            for m in modules:
-                title += m.arg + '_'
+            for module in modules:
+                title += module.arg + '_'
             title = title[:len(title)-1]
             title = title[:32]
-        for m in modules:
-            prefix = m.search_one('prefix')
+
+        # create a list of the modules, ensuring no duplicates
+        for module in modules:
+            prefix = module.search_one('prefix')
             if prefix is not None:
-                self.module_prefixes.append(prefix.arg)
+                if self.input_modules.get(prefix.arg) is None:
+                    self.input_modules[prefix.arg] = module
+            else:
+                sys.stderr.write('Skipping module %s, no module prefix found in module.' % (module.arg))
 
         if not self.ctx_filterfile:
             self.emit_uml_header(title, fd)
 
-        for module in modules:
-            pre = module.search_one('prefix')
-            if pre is not None:
-                self.thismod_prefix = pre.arg
+        for prefix in self.input_modules.keys():
+            self.thismod_prefix = prefix
+            module = self.input_modules.get(prefix)
+
             if not self.ctx_no_module:
                 self.emit_module_header(module, fd)
-            self.emit_module_class(module, fd)
-            for s in module.substmts:
-                self.emit_stmt(module, s, fd)
+            self.emit_module_class(prefix, fd)
+
+            for substmt in module.substmts:
+                self.emit_stmt(prefix, substmt, fd)
 
             if not self.ctx_filterfile:
                 self.post_process_module(module, fd)
@@ -365,11 +376,13 @@ class uml_emitter:
             self.emit_uml_footer(module, fd)
 
 
-    def emit_stmt(self, mod, stmt, fd):
+    def emit_stmt(self, pre, stmt, fd):
+        module = self.input_modules.get(pre)
+
         # find  good UML roots
 
         if stmt.keyword == 'container':
-            self.emit_container(mod, stmt, fd)
+            self.emit_container(module, stmt, fd)
             for s in stmt.substmts:
                 self.emit_child_stmt(stmt, s, fd)
 
@@ -386,7 +399,7 @@ class uml_emitter:
 
             # also, since we are the root, add the module as parent
             if self.full_path(stmt) not in self.augmentpaths and not self.ctx_inline_augments:
-                fd.write('%s *--  %s \n' %(self.full_path(mod), self.full_path(stmt)))
+                fd.write('%s *--  %s \n' % (self.full_path(module), self.full_path(stmt)))
                 self.augmentpaths.append(self.full_path(stmt))
 
             # MEF
@@ -395,7 +408,7 @@ class uml_emitter:
             prefix = self.thismod_prefix if prefix is None else prefix[1:]
 
             node = statements.find_target_node(self._ctx, stmt, True)
-            if node is not None and prefix in self.module_prefixes and not self.ctx_inline_augments:
+            if node is not None and prefix in self.input_modules.keys() and not self.ctx_inline_augments:
                 # sys.stderr.write("Found augment target : %s , %s \n" %(stmt.arg, self.full_path(node)))
                 self.augments.append(self.full_path(stmt) + '-->' + self.full_path(node) + ' : augments' + '\n')
             else:
@@ -415,17 +428,17 @@ class uml_emitter:
                     self.emit_child_stmt(stmt, s, fd)
 
         elif stmt.keyword == 'list':
-            self.emit_list(mod, stmt, fd)
+            self.emit_list(module, stmt, fd)
             for s in stmt.substmts:
                 self.emit_child_stmt(stmt, s, fd)
 
         elif stmt.keyword == 'grouping' and not self._ctx.opts.uml_inline:
-            self.emit_grouping(mod, stmt, fd, True)
+            self.emit_grouping(module, stmt, fd, True)
 
         elif stmt.keyword == 'choice':
             if not self.ctx_filterfile:
                 fd.write('class \"%s\" as %s <<choice>> \n' % (self.full_display_path(stmt), self.full_path(stmt)))
-                fd.write('%s %s %s : choice \n' % (self.full_path(mod), self.choice_relation_symbol, self.full_path(stmt)))
+                fd.write('%s %s %s : choice \n' % (self.full_path(module), self.choice_relation_symbol, self.full_path(stmt)))
             # sys.stderr.write('in choice %s \n', self.full_path(mod))
             for children in stmt.substmts:
                 self.emit_child_stmt(stmt, children, fd)
@@ -433,27 +446,27 @@ class uml_emitter:
         elif stmt.keyword == 'case':
             if not self.ctx_filterfile:
                 fd.write('class \"%s\" as %s \n' %(self.full_display_path(stmt), self.full_path(stmt)))
-                fd.write('%s %s %s  : choice\n' % (self.full_path(mod), self.case_relation_symbol, self.full_path(stmt)))
+                fd.write('%s %s %s  : choice\n' % (self.full_path(module), self.case_relation_symbol, self.full_path(stmt)))
             # sys.stderr.write('in case %s \n', full_path(mod))
-            for children in mod.substmts:
+            for children in module.substmts:
                 self.emit_child_stmt(stmt, children, fd)
 
         elif stmt.keyword == 'identity':
-            self.emit_identity(mod, stmt, fd)
+            self.emit_identity(module, stmt, fd)
 
         if not self.ctx_classesonly and not self.ctx_filterfile:
             if stmt.keyword == 'typedef':
-                self.emit_typedef(mod, stmt,fd)
+                self.emit_typedef(module, stmt, fd)
             elif stmt.keyword == 'rpc':
-                self.emit_action(mod, stmt,fd)
+                self.emit_action(module, stmt, fd)
             elif stmt.keyword == 'notification':
-                self.emit_notif(mod, stmt,fd)
+                self.emit_notif(module, stmt, fd)
                 for s in stmt.substmts:
                     self.emit_child_stmt(stmt, s, fd)
             elif stmt.keyword == 'feature':
-                self.emit_feature(mod,stmt, fd)
+                self.emit_feature(module, stmt, fd)
             elif stmt.keyword == 'deviation':
-                self.emit_deviation(mod,stmt, fd)
+                self.emit_deviation(module, stmt, fd)
 
 
         # go down one level and search for good UML roots
@@ -714,9 +727,20 @@ class uml_emitter:
             fd.write('package \"%s\" as %s { \n' %(inc.arg, self.make_plantuml_keyword(inc.arg)))
             fd.write('}\n')
 
-    def emit_module_class(self, module, fd):
+    def emit_module_class(self, prefix, fd):
+        module = self.input_modules.get(prefix)
         fd.write('class \"%s\" as %s << (M, #33CCFF) module>> \n' %(self.full_display_path(module), self.full_path(module)))
 
+        # create list for the package statements
+        self.package_puml[prefix] = []
+
+
+    def render_packages(self, fd):
+        for prefix in self.package_puml.keys():
+            module = self.input_modules.get(prefix)
+            fd.write('class \"%s\" as %s << (M, #33CCFF) module>> \n' % (self.full_display_path(module),self.full_path(module)))
+            for statement in self.package_puml.get(prefix):
+                fd.write(statement)
 
 
     def emit_uml_footer(self, module, fd):
@@ -991,7 +1015,7 @@ class uml_emitter:
                         target_prefix = self.thismod_prefix
 
                     # if target node (last node in path) is located in the list of input modules, a relation to the target class can be created
-                    if target_prefix in self.module_prefixes:
+                    if target_prefix in self.input_modules.keys():
                         # if the relation is internal to this module append to leafrefs else append to end of diagram outside the scope of any input module
                         target_keyword = self.full_path(target_node.parent)
                         if target_prefix == self.thismod_prefix:
@@ -1043,7 +1067,7 @@ class uml_emitter:
                     # in both the above cases the keyword will be then same
                     # if baseid is in another input module, then an identity class will have been defined there (with the same keyword), in which case the relation must be defined outside of the module packages
                     prefix, _ = util.split_identifier(baseid)
-                    if prefix == self.thismod_prefix or prefix not in self.module_prefixes:
+                    if prefix == self.thismod_prefix or prefix not in self.input_modules.keys():
                         self.post_strings.append(keyword + '-->' + self.make_plantuml_keyword(baseid) + '_identity : ' + node.arg + '\n')
                     else:
                         self.end_strings.append(keyword + '-->' + self.make_plantuml_keyword(baseid) + '_identity : ' + node.arg + '\n')
@@ -1275,7 +1299,7 @@ class uml_emitter:
             # If a base is not defined in the module, define it, if it is not in another input module
             if not base in self.identities:
                 prefix, _ = util.split_identifier(base)
-                if prefix not in self.module_prefixes:
+                if prefix not in self.input_modules.keys():
                     keyword = self.make_plantuml_keyword(base) + '_identity'
                     fd.write('class \"%s\" as %s << (I,Silver) identity>> \n' %(base, keyword))
 
