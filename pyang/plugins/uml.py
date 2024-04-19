@@ -75,9 +75,11 @@ class UMLPlugin(plugin.PyangPlugin):
             optparse.make_option("--uml-no",
                                  dest="uml_no",
                                  default="",
-                                 help="Suppress parts of the diagram. \nValid suppress values are: module, uses, leafref, identity, identityref, typedef, import, annotation, circles, stereotypes, prefix, footer, title. "
+                                 help="Suppress parts of the diagram. \nValid suppress values are: module, uses, leafref, identity, identityref, typedef, import, annotation, circles, stereotypes, prefix, footer, title, pseudoattributes. "
                                       "Annotations suppresses YANG constructs represented as annotations such as config statements for containers and module info. Module suppresses module box around the diagram and module information. " 
-                                      "Prefix suppresses the the prefix in the name of packages. \nIf footer or title are selected, the options --uml-footer and --uml-title respectively will be ignored. \nExample --uml-no=circles,stereotypes,typedef,import"),
+                                      "Prefix suppresses the the prefix in the name of packages. \nIf footer or title are selected, the options --uml-footer and --uml-title respectively will be ignored. "
+                                      "Pseudoattributes suppresses attributes within classes used for traversing from an instance of that class across the association to the target instance or set of target instances, e.g., leafrefs and uses."
+                                      "\nExample --uml-no=circles,stereotypes,typedef,import"),
             optparse.make_option("--uml-truncate",
                                  dest="uml_truncate",
                                  default="",
@@ -170,6 +172,7 @@ class uml_emitter:
     ctx_annotations = True
     ctx_circles = True
     ctx_stereotypes = True
+    ctx_pseudoattributes = True
     ctx_truncate_leafrefs = False
     ctx_truncate_augments = False
     ctx_inline_augments = False
@@ -232,11 +235,12 @@ class uml_emitter:
         self.ctx_imports = not "import" in no
         self.ctx_circles = not "circles" in no
         self.ctx_stereotypes = not "stereotypes" in no
+        self.ctx_pseudoattributes = not "pseudoattributes" in no
         self.ctx_prefix = not "prefix" in no
         self.ctx_title = not "title" in no
         self.ctx_footer = not "footer" in no
 
-        nostrings = ("module", "leafref", "uses", "annotation", "identityref", "typedef", "import", "circles", "stereotypes", "prefix", "footer", "title")
+        nostrings = ("module", "leafref", "uses", "annotation", "identityref", "typedef", "import", "circles", "stereotypes", "prefix", "footer", "title", "pseudoattributes")
         if ctx.opts.uml_no != "":
             for no_opt in no:
                 if no_opt not in nostrings:
@@ -512,7 +516,7 @@ class uml_emitter:
                 for children in node.substmts:
                     self.emit_child_stmt(node, children, fd)
         elif node.keyword == 'uses':
-            if not self.ctx_filterfile and not self._ctx.opts.uml_inline:
+            if not self.ctx_filterfile and not self._ctx.opts.uml_inline and self.ctx_pseudoattributes :
                 fd.write('%s : %s {uses} \n' %(self.full_path(parent), node.arg))
             if not self._ctx.opts.uml_inline:
                 self.emit_uses(parent, node)
@@ -859,8 +863,10 @@ class uml_emitter:
                 fd.write("}\n")
             else:
                 fd.write('class \"%s\" as %s << (T, YellowGreen) typedef>>\n' %(t.arg, keyword))
-                fd.write('%s : %s\n' %(keyword, self.typestring(t)))
-
+                if e.arg != 'leafref' and self.ctx_pseudoattributes:
+                    fd.write('%s : %s\n' % (keyword, self.typestring(t)))
+                else:
+                    self.typestring(t)
 
     def emit_notif(self, parent, node, fd):
         # ALTERNATIVE 1
