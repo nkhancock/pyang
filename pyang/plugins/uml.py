@@ -953,6 +953,22 @@ class uml_emitter:
             s = s + '}'
         elif t.arg == 'leafref':
             # sys.stderr.write('in leafref \n')
+
+            minelem = '0'
+            maxelem = self.ctx_unbounded_maxelem
+            oby = ''
+            mi = node.search_one('min-elements')
+            if mi is not None:
+                minelem = mi.arg
+            ma = node.search_one('max-elements')
+            if ma is not None:
+                maxelem = ma.arg
+            orderedby = node.search_one('ordered-by')
+            if orderedby is not None:
+                oby = ': ordered-by : ' + orderedby.arg
+
+
+
             s = s + ' : '
             p = t.search_one('path')
             if p is not None:
